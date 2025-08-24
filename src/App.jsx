@@ -79,18 +79,34 @@ const gv = (obj, ...keys) => {
   return "";
 };
 
-/* Parse date/datetime as UTC (no local TZ drift) */
+/* Parse date/datetime as UTC (supports ISO and M/D/YYYY or D/M/YYYY) */
 function parseDateTimeUTC(s) {
   const t = String(s || "").trim();
   if (!t) return null;
-  const m =
-    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(t);
+
+  // 1) ISO: 2025-08-22 or 2025-08-22 19:45[:ss]
+  let m =
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
   if (m) {
-    const [_, yy, mo, dd, hh = "12", mi = "0", ss = "0"] = m;
-    return new Date(Date.UTC(+yy, +mo - 1, +dd, +hh, +mi, +ss));
+    const [, y, mo, d, hh = "12", mi = "0", ss = "0"] = m;
+    return new Date(Date.UTC(+y, +mo - 1, +d, +hh, +mi, +ss));
   }
-  return null;
+
+  // 2) Slash dates: M/D/YYYY or D/M/YYYY, optional time
+  m =
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
+  if (m) {
+    let a = +m[1], b = +m[2], y = +m[3];
+    // Assume M/D by default; if first part > 12, treat as D/M
+    let mo = a > 12 ? b : a;
+    let d  = a > 12 ? a : b;
+    const hh = +(m[4] ?? 12), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
+    return new Date(Date.UTC(y, mo - 1, d, hh, mi, ss));
+  }
+
+  return null; // unknown format
 }
+
 
 /* ===================== ELIGIBILITY & SEEDING ===================== */
 /* Treat "women" the same as "u60kg" for eligibility */
