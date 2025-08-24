@@ -23,11 +23,11 @@ const CONFIG = {
   weightClasses: DISPLAY_CLASSES,
   branding: {
     clubName: "NUAC Armwrestling Club",
-    logoUrl: "/assets/logo.png",
-    backgroundImage: "/assets/background.jpg",
+    logoUrl: "/logo.png",          // <-- lives at public/logo.png
+    backgroundImage: "/background.jpg", // <-- lives at public/background.jpg
   },
   photos: {
-    byPlayerId: {}, // later: { cody_o: "/photos/cody_o.jpg", ... }
+    byPlayerId: {},
     size: 72,
     ring: true,
   },
@@ -38,6 +38,7 @@ const CONFIG = {
 /* gviz (fast) CSV URL */
 const csvUrl = ({ id, gid }) =>
   `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&gid=${gid}`;
+
 
 /* ===================== HELPERS ===================== */
 const trim = (x) => (x ?? "").toString().trim();
