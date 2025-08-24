@@ -452,7 +452,7 @@ export default function App() {
             {CONFIG.branding.clubName} – Rankings
           </h1>
           <div style={{ marginTop: 4, opacity: .85, fontSize: 13 }}>
-            Live ladders • deterministic replay • instant updates
+            active members only • competitive rankings • instant updates
           </div>
         </div>
 
