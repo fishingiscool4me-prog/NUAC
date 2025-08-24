@@ -27,10 +27,17 @@ const CONFIG = {
     backgroundImage: "/background.jpg", // <-- lives at public/background.jpg
   },
   photos: {
-    byPlayerId: {},
-    size: 72,
-    ring: true,
+  byPlayerId: {
+    // keys MUST match the player IDs in your Players sheet
+    aden_w: "/aden_champ.png",
+    tristan_c: "/tristan_champ.png",
+    wesley_h: "/wesley_champ.png",
+    yve_w: "/yve_champ.png",
   },
+  size: 72,   // circle size in the card header
+  ring: true, // white ring around the photo
+},
+
   defaultWindowDays: 30,
   livePollMs: 2000,
 };
