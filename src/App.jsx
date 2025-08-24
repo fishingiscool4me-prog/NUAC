@@ -13,7 +13,6 @@ const DISPLAY_CLASSES = [
     .reverse()
     .flatMap((g) => ARMS.map((a) => `${g} ${a}`)),
 ];
-
 /* ===================== CONFIG ===================== */
 /* Using gviz for fast-refresh CSVs */
 const CONFIG = {
@@ -24,14 +23,11 @@ const CONFIG = {
   weightClasses: DISPLAY_CLASSES,
   branding: {
     clubName: "NUAC Armwrestling Club",
-    // Make sure these Drive files are set to "Anyone with the link → Viewer"
-    logoUrl: "https://drive.google.com/uc?id=1Ki-VPs7GY7zvsmOEY1rQ49I3C3IZxwNv",
-    backgroundImage: "https://drive.google.com/uc?id=1wWAEMqxd6z0t94FnDq15ZO7YJ90U2Cdz",
+    logoUrl: "/assets/logo.png",
+    backgroundImage: "/assets/background.jpg",
   },
   photos: {
-    // OPTIONAL: add champion photos later by player id:
-    // byPlayerId: { "player_id_here": "https://drive.google.com/uc?id=FILEID", ... }
-    byPlayerId: {},
+    byPlayerId: {}, // later: { cody_o: "/photos/cody_o.jpg", ... }
     size: 72,
     ring: true,
   },
