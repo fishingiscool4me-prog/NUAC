@@ -369,7 +369,7 @@ export default function App() {
       : "#0b132b";
 
   // Rename u60kg ladder headers to "u60KG and women"
-  const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "u60KG and women");
+  const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women and u60kg");
 
   const pageStyle = {
     minHeight: "100vh",
