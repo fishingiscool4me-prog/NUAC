@@ -335,7 +335,7 @@ export default function App() {
   }, [players, matches, windowDays, showBadges]);
 
   const lastEventAt = (wc, id) => nowData.lastEventMap.get(`${wc}:${id}`) || null;
-  const limitFor = (wc) => (wc.startsWith("Open") ? 15 : 5);
+  const limitFor = (wc) => (wc.startsWith("Open") ? 15 : 10);
 
   /* ---------- UI helpers / style ---------- */
   const green = "#22c55e"; // winner highlight
