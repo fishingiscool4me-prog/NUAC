@@ -33,6 +33,8 @@ const CONFIG = {
     tristan_c: "/tristan_champ.png",
     wesley_h: "/wesley_champ.png",
     yve_w: "/yve_champ.png",
+    luke_a: "/luke_champ.png",
+    moses_m: "/moses_champ.png",
   },
   size: 72,   // circle size in the card header
   ring: true, // white ring around the photo
