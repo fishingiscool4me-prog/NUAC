@@ -13,6 +13,7 @@ const DISPLAY_CLASSES = [
     .reverse()
     .flatMap((g) => ARMS.map((a) => `${g} ${a}`)),
 ];
+
 /* ===================== CONFIG ===================== */
 /* Using gviz for fast-refresh CSVs */
 const CONFIG = {
@@ -23,22 +24,22 @@ const CONFIG = {
   weightClasses: DISPLAY_CLASSES,
   branding: {
     clubName: "NUAC Armwrestling Club",
-    logoUrl: "/logo-nobg.png",          // <-- lives at public/logo.png
-    backgroundImage: "/background.jpg", // <-- lives at public/background.jpg
+    logoUrl: "/logo-nobg.png",
+    backgroundImage: "/background.jpg",
   },
   photos: {
-  byPlayerId: {
-    // keys MUST match the player IDs in your Players sheet
-    aden_w: "/aden_champ.png",
-    tristan_c: "/tristan_champ.png",
-    wesley_h: "/wesley_champ.png",
-    yve_w: "/Yve_Champ_New.jpg",
-    luke_a: "/luke_champ.png",
-    moses_m: "/moses_champ.png",
+    byPlayerId: {
+      // keys MUST match the player IDs in your Players sheet
+      aden_w: "/aden_champ.png",
+      tristan_c: "/tristan_champ.png",
+      wesley_h: "/wesley_champ.png",
+      yve_w: "/Yve_Champ_New.jpg",
+      luke_a: "/luke_champ.png",
+      moses_m: "/moses_champ.png",
+    },
+    size: 72,
+    ring: true,
   },
-  size: 72,   // circle size in the card header
-  ring: true, // white ring around the photo
-},
 
   defaultWindowDays: 30,
   livePollMs: 2000,
@@ -47,7 +48,6 @@ const CONFIG = {
 /* gviz (fast) CSV URL */
 const csvUrl = ({ id, gid }) =>
   `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&gid=${gid}`;
-
 
 /* ===================== HELPERS ===================== */
 const trim = (x) => (x ?? "").toString().trim();
@@ -81,12 +81,13 @@ const gv = (obj, ...keys) => {
   return "";
 };
 
-/* Parse date/datetime as UTC (supports ISO and M/D/YYYY or D/M/YYYY) */
-function parseDateTimeUTC(s) {
+/* ---------- AU-first, robust date parser ---------- */
+function parseDateTimeUTC(s, opts = {}) {
+  const preferDMY = opts.preferDMY ?? true; // AU default
   const t = String(s || "").trim();
   if (!t) return null;
 
-  // 1) ISO: 2025-08-22 or 2025-08-22 19:45[:ss]
+  // ISO: YYYY-MM-DD[ HH:MM[:SS]]
   let m =
     /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
   if (m) {
@@ -94,21 +95,46 @@ function parseDateTimeUTC(s) {
     return new Date(Date.UTC(+y, +mo - 1, +d, +hh, +mi, +ss));
   }
 
-  // 2) Slash dates: M/D/YYYY or D/M/YYYY, optional time
+  // Slash dates: D/M/Y or M/D/Y (ambiguous when both <= 12)
   m =
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/.exec(t);
   if (m) {
-    let a = +m[1], b = +m[2], y = +m[3];
-    // Assume M/D by default; if first part > 12, treat as D/M
-    let mo = a > 12 ? b : a;
-    let d  = a > 12 ? a : b;
+    const a = +m[1], b = +m[2], y = +m[3];
     const hh = +(m[4] ?? 12), mi = +(m[5] ?? 0), ss = +(m[6] ?? 0);
-    return new Date(Date.UTC(y, mo - 1, d, hh, mi, ss));
+
+    // Unambiguous
+    if (a > 12 && b <= 12) return new Date(Date.UTC(y, b - 1, a, hh, mi, ss)); // D/M
+    if (b > 12 && a <= 12) return new Date(Date.UTC(y, a - 1, b, hh, mi, ss)); // M/D
+
+    // Ambiguous → prefer AU, but if the other interpretation is clearly closer to "now", flip.
+    const dmy = Date.UTC(y, b - 1, a, hh, mi, ss);
+    const mdy = Date.UTC(y, a - 1, b, hh, mi, ss);
+    let pick = preferDMY ? dmy : mdy;
+
+    const now = Date.now(), day = 86400000;
+    const dd = Math.abs(now - dmy), dm = Math.abs(now - mdy);
+    if ((preferDMY && dm + 2*day < dd) || (!preferDMY && dd + 2*day < dm)) pick = preferDMY ? mdy : dmy;
+
+    return new Date(pick);
   }
 
   return null; // unknown format
 }
 
+/* ---------- Injuries ---------- */
+function parseInjury(val) {
+  const t = String(val || "").toLowerCase().trim();
+  if (!t) return { injuredRight: false, injuredLeft: false };
+  const parts = t.split(/[,\s/;|]+/).filter(Boolean);
+  const set = new Set(parts);
+  const isRight = set.has("right") || set.has("r");
+  const isLeft  = set.has("left")  || set.has("l");
+  const isBoth  = set.has("both");
+  return {
+    injuredRight: isBoth || isRight,
+    injuredLeft:  isBoth || isLeft,
+  };
+}
 
 /* ===================== ELIGIBILITY & SEEDING ===================== */
 /* Treat "women" the same as "u60kg" for eligibility */
@@ -125,26 +151,28 @@ function eligibleClassesFor(player) {
   return labels;
 }
 
-function seedLadders(players, displayClasses) {
+/* Seed ladders with EVERYONE so history is stable (don’t drop inactive/injured here) */
+function seedLaddersAll(players, displayClasses) {
   const ladders = Object.fromEntries(displayClasses.map((wc) => [wc, []]));
-  players
-    .filter((p) => p.active)
-    .forEach((p) => {
-      const elig = eligibleClassesFor(p);
-      elig.forEach((wc) => {
-        if (ladders[wc]) ladders[wc].push(p);
-      });
+  players.forEach((p) => {
+    const elig = eligibleClassesFor(p);
+    elig.forEach((wc) => {
+      if (ladders[wc]) ladders[wc].push(p);
     });
+  });
+
   Object.keys(ladders).forEach((wc) => {
     ladders[wc].sort((a, b) => {
+      // No starting rank => Infinity => bottom (unranked)
       const ar = a.current_rank ? +a.current_rank : Infinity;
       const br = b.current_rank ? +b.current_rank : Infinity;
       if (ar !== br) return ar - br;
-      return a.name.localeCompare(b.name);
+      return (a.name || "").localeCompare(b.name || "");
     });
   });
   return ladders;
 }
+
 function indexRanks(arr) {
   const m = new Map();
   arr.forEach((p, i) => m.set(p.id || "row_" + i, i + 1));
@@ -177,7 +205,8 @@ function applyMatchToLadder(ladder, match) {
 
 /* ===================== CORE REPLAY ===================== */
 function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
-  const ladders = seedLadders(players, displayClasses);
+  // Seed with ALL players to preserve historical placements
+  const ladders = seedLaddersAll(players, displayClasses);
   const lastEventMap = new Map();
   const lastJumpMap = new Map();
 
@@ -187,10 +216,10 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
   matches
     .map((m) => ({ ...m, _t: parseDateTimeUTC(m._dateTime)?.getTime() ?? 0 }))
     .sort((a, b) => {
-      if (a._t !== b._t) return a._t - b._t;
-      if ((a._seq ?? Infinity) !== (b._seq ?? Infinity))
-        return (a._seq ?? Infinity) - (b._seq ?? Infinity);
-      return a._stableKey.localeCompare(b._stableKey);
+      if (a._t !== b._t) return a._t - b._t;                 // date/time
+      const sa = a._seq ?? Infinity, sb = b._seq ?? Infinity; // optional sequence
+      if (sa !== sb) return sa - sb;
+      return (a._row ?? 0) - (b._row ?? 0);                   // sheet order (top→bottom)
     })
     .forEach((m) => {
       const when = new Date(m._t || 0);
@@ -232,7 +261,7 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
   Object.keys(ladders).forEach((wc) => {
     const arr = ladders[wc];
     const ranks = indexRanks(arr);
-    out[wc] = arr.map((p) => ({ ...p, rank: ranks.get(p.id) }));
+    out[wc] = arr.map((p) => ({ ...p, rank: ranks.get(p.id) })); // internal rank snapshot
   });
 
   return { ladders: out, lastEventMap, lastJumpMap };
@@ -260,6 +289,10 @@ export default function App() {
       let act = trim(gv(r, "active", "currently active?", "currently active")) || "true";
       let sr = trim(gv(r, "starting rank", "current_rank"));
 
+      // Injured? column (Right/Left/Both/R/L/comma lists)
+      const injCol = trim(gv(r, "injured?", "injured", "injury"));
+      const { injuredRight, injuredLeft } = parseInjury(injCol);
+
       if (!rawId && !nm && !wc) {
         const vals = Object.values(raw || {});
         rawId = trim(vals[0]);
@@ -279,7 +312,9 @@ export default function App() {
         name: nm || safeId,
         weight_class: wc,
         active: yes(act),
-        current_rank: sr,
+        current_rank: sr,          // blank → Infinity (unranked bottom)
+        injuredRight,
+        injuredLeft,
       };
     });
 
@@ -329,6 +364,7 @@ export default function App() {
           _dateTime: dt,
           _seq: seq,
           _stableKey: stableKey,
+          _row: rowIndex,            // for same-day ordering (bottom applies last)
           weight_class: wc,
           winner_id: win,
           loser_id: lose,
@@ -350,9 +386,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Compute current ladders and window
+  // Compute current ladders and window (history includes everyone; render filters)
   const { nowData, pastData, cutoff } = useMemo(() => {
     const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0); // inclusive window start
     cutoff.setDate(cutoff.getDate() - (showBadges ? windowDays : 36500));
     const past = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, cutoff);
     const now = computeLaddersThroughDate(players, matches, CONFIG.weightClasses, null);
@@ -372,6 +409,7 @@ export default function App() {
 
   // Rename u60kg ladder headers to "u60KG and women"
   const prettyClassLabel = (wc) => wc.replace(/^u60kg\b/i, "Women and Men u60kg");
+  const armOf = (wc) => (wc.endsWith(" Right") ? "Right" : "Left");
 
   const pageStyle = {
     minHeight: "100vh",
@@ -521,9 +559,20 @@ export default function App() {
 
       <div style={gridStyle}>
         {CONFIG.weightClasses.map((wc) => {
-          const current = (nowData.ladders[wc] || []).slice(0, limitFor(wc));
-          const past = pastData.ladders[wc] || [];
-          const pastRank = new Map(past.map((p) => [p.id, p.rank]));
+          // FULL ladders (computed with everyone)
+          const fullNow = nowData.ladders[wc] || [];
+          const fullPast = pastData.ladders[wc] || [];
+
+          // Filter only at render: active + arm not injured
+          const arm = armOf(wc);
+          const eligible = (p) => p.active && (arm === "Right" ? !p.injuredRight : !p.injuredLeft);
+
+          const filteredNow = fullNow.filter(eligible);
+          const filteredPast = fullPast.filter(eligible);
+
+          // Display list + past ranks (contiguous indices among eligible)
+          const current = filteredNow.slice(0, limitFor(wc));
+          const pastRank = new Map(filteredPast.map((p, i) => [p.id, i + 1]));
           const champion = current[0];
           const champPhoto = champion ? photoForPlayer(champion.id) : "";
 
@@ -551,9 +600,10 @@ export default function App() {
               </div>
 
               <div style={{ padding: 10 }}>
-                {current.map((p) => {
+                {current.map((p, idx) => {
+                  const displayRank = idx + 1; // contiguous rank among visible eligible players
                   const was = pastRank.get(p.id);
-                  const delta = was ? was - p.rank : 0;
+                  const delta = was ? was - displayRank : 0;
                   const evt = lastEventAt(wc, p.id);
                   const showBadge = showBadges && evt && evt.when >= cutoff;
 
@@ -565,7 +615,7 @@ export default function App() {
 
                   return (
                     <div key={`${wc}:${p.id}`} style={rowStyle}>
-                      <div style={rankStyle}>{p.rank}</div>
+                      <div style={rankStyle}>{displayRank}</div>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <span style={{ ...nameStyle, color: nameColor }}>{p.name}</span>
@@ -574,7 +624,7 @@ export default function App() {
                               ↑ {jump > 0 ? jump : delta}
                             </span>
                           )}
-                          {isRecentTakeover && <span title="Took rank" style={{ color: "#f5c542" }}>★</span>}
+                          {isRecentTakeover && <span title="Took rank" style={{ color: gold }}>★</span>}
                           {isRecentDefense && <span title="Defended">🛡️</span>}
                         </div>
                         <div style={subStyle}>Base: {p.weight_class}</div>
