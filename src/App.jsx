@@ -36,6 +36,8 @@ const CONFIG = {
       yve_w: "/Yve_Champ_New.jpg",
       luke_a: "/luke_champ.png",
       moses_m: "/moses_champ.png",
+      rock_o: "/rock_champ.jpg",
+      jaz_k: "/jez_champ.png",
     },
     size: 72,
     ring: true,
