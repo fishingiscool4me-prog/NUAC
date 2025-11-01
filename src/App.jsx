@@ -209,8 +209,12 @@ function applyMatchToLadder(ladder, match) {
 function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
   // Seed with ALL players to preserve historical placements
   const ladders = seedLaddersAll(players, displayClasses);
-  const lastEventMap = new Map();
-  const lastJumpMap = new Map();
+
+  // We now track positive events independently so a later loss never erases them.
+  const lastEventMap = new Map();          // winner's last positive event (defense/takeover)
+  const lastJumpMap = new Map();           // winner's last takeover jump size
+  const lastTakeoverMap = new Map();       // when the last takeover happened (Date)
+  const lastDefenseMap = new Map();        // when the last defense happened (Date)
 
   const laddersForArm = (arm) =>
     Object.keys(ladders).filter((wc) => wc.endsWith(` ${arm}`));
@@ -241,19 +245,21 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
         ladders[wc] = newLadder;
 
         events.forEach((e) => {
-          const wk = `${wc}:${e.winner_id}`;
-          const lk = `${wc}:${e.loser_id}`;
           if (!m._badgeSuppressed) {
+            const wk = `${wc}:${e.winner_id}`;
+            // Record POSITIVE events per type and never overwrite them with "lost".
             if (e.type === "defense") {
               lastEventMap.set(wk, { type: "defense", when });
+              lastDefenseMap.set(wk, when);
               lastJumpMap.delete(wk);
             }
             if (e.type === "takeover") {
               lastEventMap.set(wk, { type: "takeover", when });
+              lastTakeoverMap.set(wk, when);
               lastJumpMap.set(wk, e.jump || 0);
             }
-            lastEventMap.set(lk, { type: "lost", when });
-            lastJumpMap.delete(lk);
+            // NOTE: we intentionally do NOT record "lost" to lastEventMap anymore.
+            // That way, a later loss does not hide a recent takeover/defense badge.
           }
         });
       }
@@ -266,7 +272,7 @@ function computeLaddersThroughDate(players, matches, displayClasses, cutoff) {
     out[wc] = arr.map((p) => ({ ...p, rank: ranks.get(p.id) })); // internal rank snapshot
   });
 
-  return { ladders: out, lastEventMap, lastJumpMap };
+  return { ladders: out, lastEventMap, lastJumpMap, lastTakeoverMap, lastDefenseMap };
 }
 
 /* ===================== APP ===================== */
@@ -398,7 +404,7 @@ export default function App() {
     return { nowData: now, pastData: past, cutoff };
   }, [players, matches, windowDays, showBadges]);
 
-  const lastEventAt = (wc, id) => nowData.lastEventMap.get(`${wc}:${id}`) || null;
+  const lastEventAt = (wc, id) => nowData.lastEventMap.get(`${wc}:${id}`) || null; // kept for compatibility
   const limitFor = (wc) => (wc.startsWith("Open") ? 15 : 10);
 
   /* ---------- UI helpers / style ---------- */
@@ -606,13 +612,16 @@ export default function App() {
                   const displayRank = idx + 1; // contiguous rank among visible eligible players
                   const was = pastRank.get(p.id);
                   const delta = was ? was - displayRank : 0;
-                  const evt = lastEventAt(wc, p.id);
-                  const showBadge = showBadges && evt && evt.when >= cutoff;
 
-                  const isRecentTakeover = showBadge && evt?.type === "takeover";
-                  const isRecentDefense = showBadge && evt?.type === "defense";
+                  // NEW: evaluate badges against last takeover/defense timestamps (not "lost")
+                  const key = `${wc}:${p.id}`;
+                  const takeoverWhen = nowData.lastTakeoverMap.get(key) || null;
+                  const defenseWhen  = nowData.lastDefenseMap.get(key)  || null;
 
-                  const jump = nowData.lastJumpMap.get(`${wc}:${p.id}`) ?? 0;
+                  const isRecentTakeover = showBadges && takeoverWhen && takeoverWhen >= cutoff;
+                  const isRecentDefense  = showBadges && defenseWhen  && defenseWhen  >= cutoff;
+
+                  const jump = nowData.lastJumpMap.get(key) ?? 0;
                   const nameColor = isRecentTakeover || isRecentDefense ? "#22c55e" : "white";
 
                   return (
